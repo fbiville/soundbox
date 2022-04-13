@@ -18,6 +18,7 @@ func main() {
 	duration := Duration(rawDuration) * Second
 	frequency := rawFrequency * Hertz
 
-	rawFile := NewDefaultSampler().GenerateF32LE(Note(duration, frequency))
-	NewDefaultPlayer().PlayF32LE(rawFile, duration)
+	player := NewDefaultPlayer()
+	sampler := NewDefaultSampler()
+	player.PlayF32LE(sampler.GenerateF32LE(NewSound(duration, Sinusoidal, frequency)))
 }

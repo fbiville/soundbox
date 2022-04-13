@@ -1,5 +1,5 @@
 package units
 
-type PerSecond = float64
+type Frequency = float64
 
-const Hertz PerSecond = 1
+const Hertz Frequency = 1

@@ -1,9 +1,18 @@
 package soundbox
 
 import (
+	"fmt"
 	"github.com/fbiville/soundbox/pkg/units"
 	"math"
 	"time"
+)
+
+type BasicShape int
+
+const (
+	Sinusoidal BasicShape = iota
+	Square
+	Triangle
 )
 
 type Sound interface {
@@ -11,63 +20,50 @@ type Sound interface {
 	DurationInSeconds() int
 }
 
-func Note(duration time.Duration, frequency units.PerSecond) Sound {
-	return &complexSound{
-		sounds: []sound{{
-			frequency:       frequency,
-			amplitudeFactor: 1,
-		}},
-		duration: duration,
-	}
+type sound struct {
+	frequencies []units.Frequency
+	duration    time.Duration
+	shaper      func(float64) float64
 }
 
-type complexSound struct {
-	sounds   []sound
-	duration time.Duration
+func NewSound(duration time.Duration, shape BasicShape, freqs ...units.Frequency) Sound {
+	return newSound(duration, shape, freqs)
 }
 
-func Chord(duration time.Duration, mainFrequencies ...units.PerSecond) Sound {
-	return &complexSound{
-		sounds:   harmonics(mainFrequencies),
-		duration: duration,
-	}
-}
-
-func (c *complexSound) Value(sampleRate, sampleIndex int) float64 {
+func (c *sound) Value(sampleRate, sampleIndex int) float64 {
 	sum := 0.0
-	for _, sound := range c.sounds {
-		sum += sineWavePoint(sampleRate, sampleIndex, sound)
+	for _, sound := range c.frequencies {
+		sum += c.sineWavePoint(sampleRate, sampleIndex, sound)
 	}
 	return sum
 }
 
-func (c *complexSound) DurationInSeconds() int {
+func (c *sound) DurationInSeconds() int {
 	return int(c.duration.Seconds())
 }
 
-func harmonics(frequencies []units.PerSecond) []sound {
-	var allFrequencies []sound
-	for _, fundamental := range frequencies {
-		allFrequencies = append(allFrequencies, sound{
-			frequency:       fundamental,
-			amplitudeFactor: 1,
-		})
-		for i := 1; i <= 4; i++ {
-			harmonic := fundamental * units.PerSecond(1+i)
-			allFrequencies = append(allFrequencies, sound{
-				frequency:       harmonic,
-				amplitudeFactor: 1.0 / math.Pow(2, float64(i)),
-			})
-		}
+func (c *sound) sineWavePoint(samplingCount int, sampleIndex int, sound units.Frequency) float64 {
+	sine := math.Sin(sound * 2 * math.Pi * float64(sampleIndex) / float64(samplingCount))
+	return c.shaper(sine)
+}
+
+func sineTransformer(shape BasicShape) func(float64) float64 {
+	switch shape {
+	case Sinusoidal:
+		return func(f float64) float64 { return f }
+	case Square:
+		// amplitude is reduced since the produce wave sounds louder for some reason
+		return func(f float64) float64 { return math.Copysign(1, f) / 2 }
+	case Triangle:
+		return func(f float64) float64 { return 2 * math.Asin(f) / math.Pi }
 	}
-	return allFrequencies
+	panic(fmt.Sprintf("Unsupported shape: %v", shape))
 }
 
-func sineWavePoint(samplingCount int, sampleIndex int, sound sound) float64 {
-	return sound.amplitudeFactor * math.Sin(sound.frequency*2*math.Pi*float64(sampleIndex)/float64(samplingCount))
-}
-
-type sound struct {
-	frequency       units.PerSecond
-	amplitudeFactor float64
+func newSound(duration time.Duration, shape BasicShape, frequencies []units.Frequency) *sound {
+	return &sound{
+		frequencies: frequencies,
+		duration:    duration,
+		shaper:      sineTransformer(shape),
+	}
 }
